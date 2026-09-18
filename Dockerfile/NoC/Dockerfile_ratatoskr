@@ -1,0 +1,15 @@
+FROM ee6470/ubuntu-ee6470:latest
+
+ENV DEBIAN_FRONTEND noninteractive
+
+# Update system
+RUN apt-get update
+RUN apt-get upgrade -y
+
+# Install required library
+RUN apt-get install -y libpugixml-dev libzmq3-dev python3.8-venv
+
+# Cleanup
+RUN apt-get autoremove -y \
+    && apt-get autoclean
+RUN rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/log/*

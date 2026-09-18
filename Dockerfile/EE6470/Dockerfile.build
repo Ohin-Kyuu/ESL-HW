@@ -1,0 +1,176 @@
+FROM ubuntu:22.04
+LABEL maintainer = "EE6470"
+
+ENV DEBIAN_FRONTEND noninteractive
+
+# Set apt mirror, using NCHC's server
+RUN sed -i 's/archive.ubuntu.com/free.nchc.org.tw/g' \
+    /etc/apt/sources.list
+# Update
+RUN apt-get update
+RUN apt-get upgrade -y
+# Install missing system-tools
+RUN apt-get install software-properties-common locales -y
+# Set locales
+RUN sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && \
+    locale-gen
+ENV LANG en_US.UTF-8
+ENV LANGUAGE en_US:en
+ENV LC_ALL en_US.UTF-8
+# Install build tools
+RUN apt-get install -y \
+    cmake ninja-build \
+    build-essential \
+    device-tree-compiler
+# Install LLVM toolchain
+RUN apt-get install -y clang
+# Install python3
+RUN apt-get install -y \
+    python3 python3-dev \
+    python3-pip
+# Install common tools
+RUN apt-get install -y \
+    vim git tmux wget curl p7zip \
+    clang-format clang-tidy \
+    gdb valgrind fish
+
+# Set environment variables
+ENV SYSTEMC_HOME=/opt/systemc
+ENV SCML_HOME=/opt/scml
+ENV LD_LIBRARY_PATH=/opt/systemc/lib
+
+# Update system
+RUN apt-get update
+RUN apt-get upgrade -y
+
+# Install depedencies
+RUN apt-get install -yq autoconf automake perl flex
+
+# Install System C library
+RUN wget -q https://www.accellera.org/images/downloads/standards/systemc/systemc-2.3.3.tar.gz && \
+    tar -xvzf systemc-2.3.3.tar.gz && rm systemc-2.3.3.tar.gz
+RUN cd systemc-2.3.3 && mkdir build && cd build && \ 
+    cmake .. -DCMAKE_CXX_STANDARD=14 && make install -j4
+
+RUN rm -rf /systemc-2.3.3
+
+# Install SCML library 2.5.0 (failed)
+#RUN wget --no-check-certificate \
+#    "https://drive.google.com/uc?export=download&id=1sRu0WRuhoXk_joiNzhcoWAnDW1HiZs_S" \
+#    -O scml.tgz && tar -xvzf scml.tgz && rm scml.tgz
+#RUN mkdir /opt/scml && mkdir /scml-2.5.0/build && cd /scml-2.5.0/build \
+#    ../configure --prefix=/opt/scml --with-systemc=/opt/systemc-2.3.3 && \
+#    make -j2 && make install 
+#RUN rm -rf /scml-2.5.0
+
+# Skip
+## Install SCML library 2.4.3
+## Note that the configure of SCML is fixed to C++11 by default, but the C++ version
+## should be bound to SystemC, for the hardcored version API
+## We have a patch script to make SCML compatible with 
+##   1. latest g++ 8.3
+##   2. C++ 14 standard
+##   3. System C 2.3.3 built by CMake (dynamic library .so instead of static library)
+#RUN git clone https://github.com/jerryzj/scml.git \
+#    && mkdir /scml/build \
+#    && mkdir /opt/scml
+#RUN cd /scml && sh /scml/scml_patch.sh
+#RUN cd /scml/build \
+#    && ../configure --prefix=${SCML_HOME} --with-systemc=${SYSTEMC_HOME} \
+#    && make install -j4
+#RUN rm -rf /scml
+
+# Skip
+# Install riscv-llvm 32bit toolchain
+# Here I use my own prebuilt version to save time
+#RUN wget -q https://github.com/jerryzj/riscv-llvm-toolchain/releases/download/v1.0/andes-rv32-toolchain-v1.0.tar.xz && \
+#    tar Jxvf andes-rv32-toolchain-v1.0.tar.xz && rm andes-rv32-toolchain-v1.0.tar.xz && \
+#    mv andes-rv32-toolchain /opt/andes-rv32-toolchain
+## Set PATH
+#RUN sed -e 's|PATH="\(.*\)"|PATH="/opt/andes-rv32-toolchain/bin:\1"|g' -i /etc/environment
+#ENV PATH=$PATH:/opt/andes-rv32-toolchain/bin
+
+# Install Arch C
+#ENV ARCHC_HOME=/opt/archc-2.4.1
+#
+#RUN mkdir -p ${ARCHC_HOME} && \
+#    git clone https://github.com/ArchC/ArchC.git ArchC
+#RUN cd ArchC && ./autogen.sh && \
+#    ./configure --prefix=${ARCHC_HOME} --with-systemc=${SYSTEMC_HOME} && \
+#    make install -j2 && cd / && rm -rf ArchC
+#RUN sed -e 's|PATH="\(.*\)"|PATH="/opt/archc-2.4.1/bin:\1"|g' -i /etc/environment
+#ENV PATH=$PATH:/opt/archc-2.4.1/bin
+
+# Skip
+## Install Arch C modified version
+#ENV ARCHC_HOME=/opt/archc-mod
+#RUN wget -q https://github.com/jerryzj/ArchC-mod/releases/download/v1.0/archc-mod-v1.0.tar.xz && \
+#    tar Jxvf archc-mod-v1.0.tar.xz && rm archc-mod-v1.0.tar.xz && \
+#    mv archc-mod /opt/archc-mod
+## Set PATH
+#RUN sed -e 's|PATH="\(.*\)"|PATH="/opt/archc-mod/bin:\1"|g' -i /etc/environment
+#ENV PATH=$PATH:/opt/archc-mod/bin
+
+# For compatibility (to old SystemC builds & EEWS)
+RUN ln -sf /opt/systemc/lib/ /opt/systemc/lib-linux64
+RUN echo 'SYSTEMC_HOME=/opt/systemc' >> /etc/environment && \
+    echo 'SCML_HOME=/opt/scml'>> /etc/environment 
+#    echo 'SCML_HOME=/opt/scml'>> /etc/environment && \
+#    echo 'ARCHC_HOME=/opt/archc-mod'>> /etc/environment
+
+# Install Boost library
+RUN apt-get install -y libboost-all-dev
+
+# Install Doxygen
+RUN apt-get install -y doxygen
+
+# Install packages to build RISC-V toolchain
+RUN apt-get install -y autotools-dev libmpc-dev libmpfr-dev libgmp-dev gawk bison texinfo gperf libtool patchutils bc zlib1g-dev libexpat-dev libboost-iostreams-dev
+
+# Build RISC-V toolchain
+RUN git clone https://github.com/riscv/riscv-gnu-toolchain.git\
+    && cd riscv-gnu-toolchain\
+    && ./configure --prefix=/opt/riscv-gnu-toolchain --with-arch=rv32imac --with-abi=ilp32 \
+    && make  \
+    && make install \
+    && cd .. \
+    && rm -rf riscv-gnu-toolchain
+# Set $PATH
+RUN sed -e 's|PATH="\(.*\)"|PATH="/opt/riscv-gnu-toolchain/bin:\1"|g' -i /etc/environment
+# Since docker build use sh as default, add ENV in order to build Spike later
+ENV PATH=$PATH:/opt/riscv-gnu-toolchain/bin
+
+# Build riscv-pk, ISS
+# riscv-pk (Proxy Kernel)
+RUN git clone https://github.com/riscv-software-src/riscv-pk.git 
+RUN cd riscv-pk && mkdir build && cd build && \
+    ../configure --prefix=/opt/riscv-gnu-toolchain --host=riscv32-unknown-elf && \
+    make -j && make install
+RUN rm -rf /riscv-pk
+# Spike ISA Simulator
+# Use Spike stable release 1.1.0 source files
+RUN wget -q https://github.com/riscv-software-src/riscv-isa-sim/archive/refs/tags/v1.1.0.tar.gz && \
+    tar -xvzf v1.1.0.tar.gz && rm v1.1.0.tar.gz
+RUN cd riscv-isa-sim-1.1.0 && mkdir build && cd build && \
+    ../configure --prefix=/opt/riscv-gnu-toolchain && \
+    make && make install
+RUN rm -rf /riscv-isa-sim-1.1.0
+
+# Cleanup
+RUN apt-get autoremove -y \
+    && apt-get autoclean
+RUN rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/log/*
+
+# Use bash as default shell
+RUN ln -sf /bin/bash /bin/sh
+
+# Leave this as the default directory (just clean)
+WORKDIR /root/
+
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod 755 /usr/local/bin/entrypoint.sh
+
+#ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+
+CMD ["/bin/bash"]
+

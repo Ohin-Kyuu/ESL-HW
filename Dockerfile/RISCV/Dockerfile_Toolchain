@@ -1,0 +1,49 @@
+FROM ee6470/ubuntu-ee6470:2021.02
+
+ENV DEBIAN_FRONTEND noninteractive
+
+# Update system
+RUN apt-get update
+RUN apt-get upgrade -y
+
+# Install Boost library
+RUN apt-get install -y libboost-all-dev
+
+# Install packages to build RISC-V toolchain
+RUN apt-get install -y autotools-dev libmpc-dev libmpfr-dev libgmp-dev gawk bison texinfo gperf libtool patchutils bc zlib1g-dev libexpat-dev libboost-iostreams-dev
+
+# Build RISC-V toolchain
+RUN git clone https://github.com/riscv/riscv-gnu-toolchain.git\
+    && cd riscv-gnu-toolchain\
+    && ./configure --prefix=/opt/riscv-gnu-toolchain --with-arch=rv32imac --with-abi=ilp32 \
+    && make  \
+    && make install \
+    && cd .. \
+    && rm -rf riscv-gnu-toolchain
+# Set $PATH
+RUN sed -e 's|PATH="\(.*\)"|PATH="/opt/riscv-gnu-toolchain/bin:\1"|g' -i /etc/environment
+# Since docker build use sh as default, add ENV in order to build Spike later
+ENV PATH=$PATH:/opt/riscv-gnu-toolchain/bin
+
+# Build riscv-pk, ISS
+# riscv-pk (Proxy Kernel)
+# Update to v1.0.0 release
+RUN wget -q https://github.com/riscv/riscv-pk/archive/v1.0.0.tar.gz && \
+    tar -xvzf v1.0.0.tar.gz && rm v1.0.0.tar.gz
+RUN cd riscv-pk-1.0.0 && mkdir build && cd build && \
+    ../configure --prefix=/opt/riscv-gnu-toolchain --host=riscv32-unknown-elf && \
+    make -j && make install
+RUN rm -rf /riscv-pk-1.0.0
+# Spike ISA Simulator
+# Use Spike stable release 1.0.0 source files
+RUN wget -q https://github.com/riscv/riscv-isa-sim/archive/v1.0.0.tar.gz && \
+    tar -xvzf v1.0.0.tar.gz && rm v1.0.0.tar.gz
+RUN cd riscv-isa-sim-1.0.0 && mkdir build && cd build && \
+    ../configure --prefix=/opt/riscv-gnu-toolchain && \
+    make && make install
+RUN rm -rf /riscv-isa-sim-1.0.0
+
+# Cleanup
+RUN apt-get autoremove -y \
+    && apt-get autoclean
+RUN rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/log/*

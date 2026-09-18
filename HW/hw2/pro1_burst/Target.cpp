@@ -1,0 +1,153 @@
+#include "Target.h"
+#include "filter_def.h"
+
+inline unsigned char med3(unsigned char a, unsigned char b, unsigned char c) {
+  if ((a <= b && b <= c) || (c <= b && b <= a))
+    return b;
+  if ((b <= a && a <= c) || (c <= a && a <= b))
+    return a;
+  return c;
+}
+
+Target::Target(sc_module_name n, unsigned int w, unsigned int h)
+    : sc_module(n), t_skt("t_skt"), base_offset(0), width(w + 4),
+      height(h + 4) {
+
+  result_buf.resize(width);
+
+  med_buf.resize(3, std::vector<unsigned char>(width)); // [3 row, width]
+  sch_buf.resize(3, std::vector<unsigned char>(width)); // [3 row, width]
+
+  t_skt.register_b_transport(this, &Target::blocking_transport);
+}
+
+// scharr mask
+const int mask[MASK_N][MASK_Y][MASK_X] = {
+    {{-3, 0, 3}, {-10, 0, 10}, {-3, 0, 3}}, // G_x
+    {{-3, -10, -3}, {0, 0, 0}, {3, 10, 3}}  // G_y
+};
+
+unsigned char Target::do_median(int u, int v) {
+  unsigned char row_med[3];
+  for (int i = 0; i < MASK_Y; ++i) {
+    unsigned char a = med_buf[(v + i) % 3][u];
+    unsigned char b = med_buf[(v + i) % 3][u + 1];
+    unsigned char c = med_buf[(v + i) % 3][u + 2];
+    row_med[i] = med3(a, b, c);
+  }
+
+  return med3(row_med[0], row_med[1], row_med[2]);
+}
+
+int Target::do_scharr(int u, int v) {
+  int val[MASK_N] = {0};
+
+  for (int i = 0; i < MASK_Y; ++i) {
+    for (int j = 0; j < MASK_X; ++j) {
+      unsigned char grey = sch_buf[(v + i) % 3][u + j];
+
+      for (int k = 0; k < MASK_N; ++k) {
+        val[k] += grey * mask[k][i][j];
+      }
+    }
+  }
+
+  double total = 0.0;
+  for (int i = 0; i < MASK_N; ++i) {
+    total += (double)val[i] * (double)val[i];
+  }
+
+  double grad = std::sqrt(total);
+  int result = (int)(std::round(grad));
+
+  // clip
+  if (result > 255)
+    result = 255;
+  if (result < 0)
+    result = 0;
+
+  return result;
+}
+
+void Target::blocking_transport(tlm::tlm_generic_payload &payload,
+                                sc_core::sc_time &delay) {
+  sc_dt::uint64 addr = payload.get_address();
+  addr = addr - base_offset;
+  unsigned char *mask_ptr = payload.get_byte_enable_ptr();
+  unsigned char *data_ptr = payload.get_data_ptr();
+
+  // Burst need to know length
+  unsigned int data_len = payload.get_data_length();
+
+  switch (payload.get_command()) {
+  // READ
+  case tlm::TLM_READ_COMMAND:
+    if (addr == MOD_RESULT_ADDR) {
+      for (unsigned int i = 0; i < data_len; ++i) {
+        data_ptr[i] = result_buf[i];
+      }
+    } else {
+      payload.set_response_status(tlm::TLM_ADDRESS_ERROR_RESPONSE);
+    }
+    // Delay
+    if (data_len == 1) {
+      delay += sc_time(1 * CLOCK_PERIOD, SC_NS); // Base: 1 cycle
+    } else {
+      delay += sc_time((2 + data_len) * CLOCK_PERIOD,
+                       SC_NS); // Burst: Initial(2) + N
+    }
+    break;
+
+  // WRITE
+  case tlm::TLM_WRITE_COMMAND:
+    if (addr == MOD_INPUT_ADDR) {
+      for (unsigned int i = 0; i < data_len; ++i) {
+        if (mask_ptr[i] == 0xff) {
+          result_buf[i] = 0;
+
+          med_buf[y % 3][x] = data_ptr[i];
+
+          if (y >= 2 && x >= 2) {
+            int med_x = x - 2;
+            int med_y = y - 2;
+
+            unsigned char med_val = do_median(med_x, med_y);
+            sch_buf[med_y % 3][med_x] = med_val;
+
+            if (med_y >= 2 && med_x >= 2) {
+              int sch_x = med_x - 2;
+              int sch_y = med_y - 2;
+
+              result_buf[i] = (unsigned char)do_scharr(sch_x, sch_y);
+            }
+          }
+
+          x++;
+          if (x >= width) {
+            x = 0;
+            y++;
+          }
+        } // for loop end
+      }
+    } else {
+      payload.set_response_status(tlm::TLM_ADDRESS_ERROR_RESPONSE);
+    }
+    if (data_len == 1) {
+      delay += sc_time(1 * CLOCK_PERIOD, SC_NS); // Base: 1 cycle
+    } else {
+      delay += sc_time((2 + data_len) * CLOCK_PERIOD,
+                       SC_NS); // Burst: Initial(2) + N
+    }
+    break;
+
+  // IGNORE
+  case tlm::TLM_IGNORE_COMMAND:
+    payload.set_response_status(tlm::TLM_GENERIC_ERROR_RESPONSE);
+    return;
+  default:
+    payload.set_response_status(tlm::TLM_GENERIC_ERROR_RESPONSE);
+    return;
+  }
+
+  payload.set_response_status(tlm::TLM_OK_RESPONSE); // Always OK
+}

@@ -1,0 +1,34 @@
+.PHONY: RAM_8X8_1RW.cc
+RAM_8X8_1RW.cc: memlib/c_parts/RAM_8X8_1RW.cc
+
+.PHONY: RAM_8X8_1RW.h
+RAM_8X8_1RW.h: memlib/c_parts/RAM_8X8_1RW.h
+
+memlib/c_parts/RAM_8X8_1RW.cc memlib/c_parts/RAM_8X8_1RW.h: memlib/RAM_8X8_1RW.bdm
+	@if [ ! -f memlib/c_parts/RAM_8X8_1RW.cc ] ; then \
+            echo "#NOTE: Generating memory library memlib for RAM_8X8_1RW.bdm" ; \
+        fi ;
+	@bdw_memgen -genonly memlib/RAM_8X8_1RW.bdm
+
+.PHONY: memlib.bdl
+memlib.bdl: memlib/memlib.bdl
+
+.PHONY: memlib.cc
+memlib.cc: memlib/c_parts/memlib.cc
+
+.PHONY: memlib.h
+memlib.h: memlib/c_parts/memlib.h
+
+memlib/memlib.bdl memlib/c_parts/memlib.cc memlib/c_parts/memlib.h :  memlib/c_parts/RAM_8X8_1RW.cc memlib/c_parts/RAM_8X8_1RW.h 
+
+
+GENERATED_FILES = memlib/c_parts/RAM_8X8_1RW.cc memlib/c_parts/RAM_8X8_1RW.h memlib/memlib.bdl memlib/c_parts/memlib.cc memlib/c_parts/memlib.h
+
+
+.PHONY: prep_pre_memlib gen_memlib
+
+
+prep_pre_memlib gen_memlib: $(GENERATED_FILES)
+
+clean_memlib: 
+	@rm -rf memlib/c_parts memlib/v_rtl memlib/Makefile.access memlib/*.bdl*

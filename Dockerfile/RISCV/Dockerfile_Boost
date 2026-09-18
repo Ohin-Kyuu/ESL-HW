@@ -1,0 +1,15 @@
+FROM ee6470/riscv:latest
+
+ENV DEBIAN_FRONTEND noninteractive
+
+# Update system
+RUN apt-get update
+RUN apt-get upgrade -y
+
+# Install Boost library
+RUN apt-get install -y libboost-all-dev
+
+# Cleanup
+RUN apt-get autoremove -y \
+    && apt-get autoclean
+RUN rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/log/*

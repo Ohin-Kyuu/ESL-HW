@@ -1,0 +1,25 @@
+x-vars: &vars 
+  tty: true
+  stdin_open: true
+  cap_add:
+      - SYS_ADMIN
+  stop_grace_period: 1s
+
+services:
+  esl:
+    build:
+      context: ./Dockerfile/EE6470
+      dockerfile: Dockerfile.x86-64
+      
+    image: ee6470/ubuntu-ee6470:revised
+    container_name: ee6470
+    hostname: ubuntu
+    <<: *vars
+    working_dir: /home/user
+    environment:
+        LOCAL_USER_ID: $LOCAL_USER_ID
+    volumes:
+        - ./Lab:/home/user/ee6470
+        - ./HW:/home/user/hw
+        - ./exam:/home/user/exam
+        - ./risc-v:/home/user/risc-v
