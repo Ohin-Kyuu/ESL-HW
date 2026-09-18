@@ -1,3 +1,6 @@
 [submodule "risc-v/riscv-vp"]
 	path = risc-v/riscv-vp
 	url = https://github.com/agra-uni-bremen/riscv-vp.git
+[submodule "HW/Final"]
+	path = HW/Final
+	url = git@github.com:Ohin-Kyuu/ESL-Final.git
