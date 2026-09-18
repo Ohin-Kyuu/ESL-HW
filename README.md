@@ -1,4 +1,4 @@
-# EE6470 Electronic System Level Design and Synthesis - Course Source 
+# EE6470 Electronic System Level Design and Synthesis - Homework 
 
 ## Attribution
 
